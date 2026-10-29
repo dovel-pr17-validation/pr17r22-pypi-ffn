@@ -1,0 +1,78 @@
+name: Build Status
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11']
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions-ext/python/setup@c8228d827a81b9f8c808825328af361c45461ba3
+        with:
+          version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: make develop
+
+      - name: Lint
+        run: make lint
+
+      - name: Checks
+        run: make checks
+
+      - name: Test
+        run: make coverage
+
+      - name: Upload test results
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results-${{ matrix.os }}
+          path: junit.xml
+        if: always()
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+        if: matrix.os == 'ubuntu-latest'
+
+      - name: Build distributions
+        run: make dist
+
+      - name: Test wheel
+        uses: actions-ext/python/test-wheel@c8228d827a81b9f8c808825328af361c45461ba3
+        with:
+          module: ffn
+
+      - name: Test source distribution
+        uses: actions-ext/python/test-sdist@c8228d827a81b9f8c808825328af361c45461ba3
+        with:
+          module: ffn
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist-${{ matrix.os }}
+          path: dist
